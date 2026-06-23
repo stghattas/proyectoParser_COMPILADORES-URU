@@ -47,16 +47,98 @@ impl Parser {
         Ok(instrucciones)
     }
 
+    // --- Lector de Bloques por Indentacion ---
+    fn parse_bloque(&mut self, indent_base: usize) -> Result<Vec<Stmt>, String> {
+        let mut instrucciones = Vec::new();
+
+        while let Some(token) = self.peek() {
+            if token.token_type == TokenType::EOF {
+                break;
+            }
+            // Ignoramos saltos de linea y puntuación extra
+            if token.value == "\n" || token.value == ";" {
+                self.advance();
+                continue;
+            }
+
+            // Si el token actual retrocede en indentación, cerramos el bloque
+            if token.indent_level <= indent_base {
+                break;
+            }
+
+            let instruccion = self.parse_instruccion()?;
+            instrucciones.push(instruccion);
+        }
+
+        Ok(instrucciones)
+    }
+
     // --- Identificar qué tipo de instrucción es ---
     fn parse_instruccion(&mut self) -> Result<Stmt, String> {
         let token_actual = self.peek().cloned().ok_or("Fin de archivo inesperado")?;
 
         match &token_actual.token_type {
-            TokenType::PalabraReservada(palabra) if palabra == "def" => {
-                self.advance();
-                self.advance();
-                Err("Aun no se ha implementado el parsing de funciones (def)".to_string())
+            // --- La estructura If / Else ---
+            TokenType::PalabraReservada(palabra) if palabra == "if" => {
+                let indent_base = token_actual.indent_level; // Guardamos el nivel del 'if'
+                self.advance(); // Consumimos la palabra 'if'
+
+                let condicion = self.parse_comparacion()?;
+
+                // Esperamos los dos puntos ':' que inician el bloque True
+                if let Some(token_puntos) = self.advance().cloned() {
+                    if let TokenType::Puntuacion(c) = token_puntos.token_type {
+                        if c == ':' {
+                            // 1. Leemos el bloque True
+                            let bloque_true = self.parse_bloque(indent_base)?;
+                            let mut bloque_else = None;
+
+                            // 2. Verificamos si el siguiente token es un 'else' al mismo nivel de indentación
+                            if let Some(token_siguiente) = self.peek().cloned() {
+                                if let TokenType::PalabraReservada(p) = &token_siguiente.token_type
+                                {
+                                    if p == "else" && token_siguiente.indent_level == indent_base {
+                                        self.advance(); // Consumimos la palabra 'else'
+
+                                        // Esperamos los ':' del else
+                                        if let Some(token_puntos_else) = self.advance().cloned() {
+                                            if let TokenType::Puntuacion(ce) =
+                                                token_puntos_else.token_type
+                                            {
+                                                if ce == ':' {
+                                                    // 3. Leemos el bloque Else
+                                                    bloque_else =
+                                                        Some(self.parse_bloque(indent_base)?);
+                                                } else {
+                                                    return Err(format!(
+                                                        "Línea {}: Se esperaba ':' después de 'else'",
+                                                        token_puntos_else.line
+                                                    ));
+                                                }
+                                            }
+                                        } else {
+                                            return Err("Fin de archivo inesperado al leer 'else'"
+                                                .to_string());
+                                        }
+                                    }
+                                }
+                            }
+
+                            return Ok(Stmt::If {
+                                condicion,
+                                bloque_true,
+                                bloque_else,
+                            });
+                        }
+                    }
+                    return Err(format!(
+                        "Línea {}: Se esperaba ':' después de la condición del if",
+                        token_puntos.line
+                    ));
+                }
+                Err("Fin de archivo inesperado al leer el if".to_string())
             }
+
             TokenType::Identificador(nombre) => {
                 let nombre_variable = nombre.clone();
                 self.advance(); // Consumimos el identificador inicial (ej: 'j', 'x', 'y')
@@ -129,6 +211,30 @@ impl Parser {
                 Ok(Stmt::Expresion(expr))
             }
         }
+    }
+
+    // --- Nivel de Comparaciones Relacionales ---
+    pub fn parse_comparacion(&mut self) -> Result<Expr, String> {
+        // Primero resolvemos cualquier matemática (sumas, restas, etc.)
+        let mut nodo_izquierdo = self.parse_expresion()?;
+
+        while let Some(token) = self.peek().cloned() {
+            if let TokenType::Operador(op) = &token.token_type {
+                // Si encontramos un operador de comparación
+                if op == ">" || op == "<" || op == "==" || op == ">=" || op == "<=" || op == "!=" {
+                    self.advance();
+                    let nodo_derecho = self.parse_expresion()?; // Resolvemos el otro lado
+                    nodo_izquierdo = Expr::OperacionBinaria {
+                        izquierdo: Box::new(nodo_izquierdo),
+                        operador: op.clone(),
+                        derecho: Box::new(nodo_derecho),
+                    };
+                    continue;
+                }
+            }
+            break;
+        }
+        Ok(nodo_izquierdo)
     }
 
     // --- La función que evalúa expresiones ---
