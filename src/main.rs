@@ -41,7 +41,13 @@ fn main() {
     let mut parser = Parser::new(tokens);
 
     match parser.parse_programa() {
-        Ok(arbol) => println!("AST Generado con éxito:\n{:#?}", arbol),
+        Ok(arbol) => {
+            println!("AST Generado con éxito:\n");
+            for instruccion in arbol {
+                instruccion.imprimir_arbol(0);
+                println!(); // Espacio en blanco entre instrucciones
+            }
+        }
         Err(e) => println!("{}", e),
     }
 }

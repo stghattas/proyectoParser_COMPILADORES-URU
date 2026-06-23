@@ -61,7 +61,7 @@ impl Parser {
                     if let TokenType::Operador(op) = &siguiente.token_type {
                         if op == "=" {
                             self.advance(); // Consumimos el '='
-                            let valor = self.parse_operacion_basica()?;
+                            let valor = self.parse_expresion()?;
                             return Ok(Stmt::Asignacion {
                                 nombre: nombre.clone(),
                                 valor,
@@ -71,23 +71,48 @@ impl Parser {
                 }
                 
                 self.position -= 1;
-                let expr = self.parse_operacion_basica()?;
+                let expr = self.parse_expresion()?;
                 Ok(Stmt::Expresion(expr))
             }
             _ => {
-                let expr = self.parse_operacion_basica()?;
+                let expr = self.parse_expresion()?;
                 Ok(Stmt::Expresion(expr))
             }
         }
     }
 
     // --- La función que evalúa expresiones ---
-    pub fn parse_operacion_basica(&mut self) -> Result<Expr, String> {
+// 1. Nivel de Sumas y Restas
+    pub fn parse_expresion(&mut self) -> Result<Expr, String> {
+        // En lugar de ir directo al primario, primero buscamos si hay multiplicaciones
+        let mut nodo_izquierdo = self.parse_termino()?;
+
+        while let Some(token) = self.peek().cloned() {
+            if let TokenType::Operador(op) = &token.token_type {
+                if op == "+" || op == "-" {
+                    self.advance(); 
+                    let nodo_derecho = self.parse_termino()?; // Buscamos el otro lado
+                    nodo_izquierdo = Expr::OperacionBinaria {
+                        izquierdo: Box::new(nodo_izquierdo),
+                        operador: op.clone(),
+                        derecho: Box::new(nodo_derecho),
+                    };
+                    continue; 
+                }
+            }
+            break; 
+        }
+        Ok(nodo_izquierdo)
+    }
+
+    // 2. Nivel de Multiplicaciones y Divisiones
+    fn parse_termino(&mut self) -> Result<Expr, String> {
+        // Aquí sí vamos directo a buscar los números o variables
         let mut nodo_izquierdo = self.parse_primario()?;
 
         while let Some(token) = self.peek().cloned() {
             if let TokenType::Operador(op) = &token.token_type {
-                if op == "+" || op == "-" || op == "*" || op == "/" {
+                if op == "*" || op == "/" {
                     self.advance(); 
                     let nodo_derecho = self.parse_primario()?;
                     nodo_izquierdo = Expr::OperacionBinaria {
