@@ -1,7 +1,7 @@
 #![allow(unused_variables)]
 
-use crate::lexer::{Token, TokenType};
 use crate::ast::{Expr, Stmt};
+use crate::lexer::{Token, TokenType};
 
 pub struct Parser {
     tokens: Vec<Token>,
@@ -10,7 +10,10 @@ pub struct Parser {
 
 impl Parser {
     pub fn new(tokens: Vec<Token>) -> Self {
-        Parser { tokens, position: 0 }
+        Parser {
+            tokens,
+            position: 0,
+        }
     }
 
     fn peek(&self) -> Option<&Token> {
@@ -50,8 +53,8 @@ impl Parser {
 
         match &token_actual.token_type {
             TokenType::PalabraReservada(palabra) if palabra == "def" => {
-                self.advance(); 
-                self.advance(); 
+                self.advance();
+                self.advance();
                 Err("Aún no hemos implementado el parsing de funciones (def)".to_string())
             }
             TokenType::Identificador(nombre) => {
@@ -69,7 +72,7 @@ impl Parser {
                         }
                     }
                 }
-                
+
                 self.position -= 1;
                 let expr = self.parse_expresion()?;
                 Ok(Stmt::Expresion(expr))
@@ -82,7 +85,7 @@ impl Parser {
     }
 
     // --- La función que evalúa expresiones ---
-// 1. Nivel de Sumas y Restas
+    // 1. Nivel de Sumas y Restas
     pub fn parse_expresion(&mut self) -> Result<Expr, String> {
         // En lugar de ir directo al primario, primero buscamos si hay multiplicaciones
         let mut nodo_izquierdo = self.parse_termino()?;
@@ -90,17 +93,17 @@ impl Parser {
         while let Some(token) = self.peek().cloned() {
             if let TokenType::Operador(op) = &token.token_type {
                 if op == "+" || op == "-" {
-                    self.advance(); 
+                    self.advance();
                     let nodo_derecho = self.parse_termino()?; // Buscamos el otro lado
                     nodo_izquierdo = Expr::OperacionBinaria {
                         izquierdo: Box::new(nodo_izquierdo),
                         operador: op.clone(),
                         derecho: Box::new(nodo_derecho),
                     };
-                    continue; 
+                    continue;
                 }
             }
-            break; 
+            break;
         }
         Ok(nodo_izquierdo)
     }
@@ -113,17 +116,17 @@ impl Parser {
         while let Some(token) = self.peek().cloned() {
             if let TokenType::Operador(op) = &token.token_type {
                 if op == "*" || op == "/" {
-                    self.advance(); 
+                    self.advance();
                     let nodo_derecho = self.parse_primario()?;
                     nodo_izquierdo = Expr::OperacionBinaria {
                         izquierdo: Box::new(nodo_izquierdo),
                         operador: op.clone(),
                         derecho: Box::new(nodo_derecho),
                     };
-                    continue; 
+                    continue;
                 }
             }
-            break; 
+            break;
         }
         Ok(nodo_izquierdo)
     }
@@ -137,6 +140,23 @@ impl Parser {
             TokenType::String(val) => Ok(Expr::LiteralString(val)),
             TokenType::Boolean(val) => Ok(Expr::LiteralBool(val)),
             TokenType::Identificador(nombre) => Ok(Expr::Identificador(nombre)),
+
+            TokenType::Puntuacion(c) if c == '(' => {
+                let expr_interna = self.parse_expresion()?;
+
+                // Al salir de la expresión, el siguiente token DEBE ser un paréntesis de cierre ')'
+                if let Some(token_cierre) = self.advance() {
+                    if token_cierre.token_type == TokenType::Puntuacion(')') {
+                        return Ok(expr_interna); // Devolvemos la expresión interna exitosamente
+                    }
+                    return Err(format!(
+                        "Error Sintáctico en la línea {}, columna {}: Se esperaba ')', pero se encontró '{}'",
+                        token_cierre.line, token_cierre.column, token_cierre.value
+                    ));
+                }
+                Err("Error Sintáctico: Se esperaba ')' antes del fin de archivo".to_string())
+            }
+
             _ => Err(format!(
                 "Error Sintáctico en la línea {}, columna {}: Se esperaba un valor primario, pero se encontró '{}'",
                 token.line, token.column, token.value

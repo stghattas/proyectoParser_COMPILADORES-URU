@@ -163,28 +163,22 @@ impl Lexer {
         let mut has_dot = false;
 
         while let Some(c) = self.current_char {
-            if c.is_numeric() || c == '.' {
+            if c.is_numeric() {
                 value.push(c);
                 self.advance();
             } else if c == '.' && !has_dot {
-                // Si encontramos un punto y no hemos visto uno antes, es un Float
                 has_dot = true;
                 value.push(c);
                 self.advance();
             } else {
-                // Si es otro caracter
                 break;
             }
         }
 
-        // Aprovecha las capacidades de parseo de Rust
         let token_type = if has_dot {
-            // Intentamos parsear a f64. Usamos unwrap_or por seguridad,
-            // aunque validamos que solo sean numeros y un punto.
             let parsed_float = value.parse::<f64>().unwrap_or(0.0);
             TokenType::Float(parsed_float)
         } else {
-            // Intentamos parsear a i64
             let parsed_int = value.parse::<i64>().unwrap_or(0);
             TokenType::Integer(parsed_int)
         };
