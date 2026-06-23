@@ -55,29 +55,76 @@ impl Parser {
             TokenType::PalabraReservada(palabra) if palabra == "def" => {
                 self.advance();
                 self.advance();
-                Err("Aún no hemos implementado el parsing de funciones (def)".to_string())
+                Err("Aun no se ha implementado el parsing de funciones (def)".to_string())
             }
             TokenType::Identificador(nombre) => {
-                self.advance(); // Consumimos el identificador
+                let nombre_variable = nombre.clone();
+                self.advance(); // Consumimos el identificador inicial (ej: 'j', 'x', 'y')
+                // 1. ¿Es una declaración de tipo con ':'? (ej: x:int)
+                if let Some(siguiente) = self.peek() {
+                    if let TokenType::Puntuacion(c) = &siguiente.token_type {
+                        if *c == ':' {
+                            self.advance(); // Consumimos los ':'
 
+                            // Lo que sigue DEBE ser el tipo de dato (ej: 'int')
+                            let tipo_dato = if let Some(token_tipo) = self.advance().cloned() {
+                                if let TokenType::Identificador(t) = token_tipo.token_type {
+                                    t
+                                } else if let TokenType::PalabraReservada(t) = token_tipo.token_type
+                                {
+                                    t // Por si usaste 'float' que está como palabra reservada en tu lexer
+                                } else {
+                                    return Err(format!(
+                                        "Linea {}: Se esperaba un tipo de dato despues de ':', se encontro '{}'",
+                                        token_tipo.line, token_tipo.value
+                                    ));
+                                }
+                            } else {
+                                return Err("Fin de archivo inesperado esperando el tipo de dato"
+                                    .to_string());
+                            };
+
+                            // Ahora revisamos si además se le está asignando un valor inicial con '='
+                            let mut valor_inicial = None;
+                            if let Some(token_despues_tipo) = self.peek() {
+                                if let TokenType::Operador(op) = &token_despues_tipo.token_type {
+                                    if op == "=" {
+                                        self.advance(); // Consumimos el '='
+                                        valor_inicial = Some(self.parse_expresion()?);
+                                    }
+                                }
+                            }
+
+                            return Ok(Stmt::Declaracion {
+                                nombre: nombre_variable,
+                                tipo: tipo_dato,
+                                valor: valor_inicial,
+                            });
+                        }
+                    }
+                }
+
+                // 2. Si no hubo ':', ¿es una asignación normal? (ej: x = 5)
                 if let Some(siguiente) = self.peek() {
                     if let TokenType::Operador(op) = &siguiente.token_type {
                         if op == "=" {
                             self.advance(); // Consumimos el '='
                             let valor = self.parse_expresion()?;
                             return Ok(Stmt::Asignacion {
-                                nombre: nombre.clone(),
+                                nombre: nombre_variable,
                                 valor,
                             });
                         }
                     }
                 }
 
-                self.position -= 1;
+                // 3. Si no es ni declaración ni asignación, es una expresión suelta
+                self.position -= 1; // Retrocedemos porque el parse_expresion necesita el identificador
                 let expr = self.parse_expresion()?;
                 Ok(Stmt::Expresion(expr))
             }
             _ => {
+                // Para cualquier otra cosa (números, paréntesis), evaluamos como expresión matemática
                 let expr = self.parse_expresion()?;
                 Ok(Stmt::Expresion(expr))
             }
@@ -139,26 +186,71 @@ impl Parser {
             TokenType::Float(val) => Ok(Expr::LiteralFloat(val)),
             TokenType::String(val) => Ok(Expr::LiteralString(val)),
             TokenType::Boolean(val) => Ok(Expr::LiteralBool(val)),
-            TokenType::Identificador(nombre) => Ok(Expr::Identificador(nombre)),
+            TokenType::Identificador(nombre) => {
+                // Es una llamada a función? Revisamos si el siguiente token es un '('
+                if let Some(siguiente) = self.peek() {
+                    if let TokenType::Puntuacion(c) = &siguiente.token_type {
+                        if *c == '(' {
+                            self.advance(); // Consumimos el '('
+
+                            let mut argumentos = Vec::new();
+
+                            // Si no se cierra inmediatamente (ej: función vacia), leemos argumentos
+                            if let Some(token_actual) = self.peek() {
+                                if !(token_actual.token_type == TokenType::Puntuacion(')')) {
+                                    // Leemos el primer argumento
+                                    argumentos.push(self.parse_expresion()?);
+
+                                    // Mientras haya comas, seguimos leyendo mas argumentos
+                                    while let Some(token_siguiente) = self.peek() {
+                                        if token_siguiente.token_type == TokenType::Puntuacion(',')
+                                        {
+                                            self.advance(); // Consumimos la ','
+                                            argumentos.push(self.parse_expresion()?);
+                                        } else {
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+
+                            // Esperamos el cierre ')'
+                            if let Some(token_cierre) = self.advance().cloned() {
+                                if token_cierre.token_type == TokenType::Puntuacion(')') {
+                                    return Ok(Expr::LlamadaFuncion { nombre, argumentos });
+                                }
+                                return Err(format!(
+                                    "Linea {}: Se esperaba ')' despues de los argumentos de la funcion '{}'",
+                                    token_cierre.line, nombre
+                                ));
+                            }
+                            return Err("Fin de archivo inesperado esperando ')'".to_string());
+                        }
+                    }
+                }
+
+                // Si no hay '(', entonces es solo una variable normal
+                Ok(Expr::Identificador(nombre))
+            }
 
             TokenType::Puntuacion(c) if c == '(' => {
                 let expr_interna = self.parse_expresion()?;
 
-                // Al salir de la expresión, el siguiente token DEBE ser un paréntesis de cierre ')'
+                // Al salir de la expresión, el siguiente token DEBE ser un parentesis de cierre ')'
                 if let Some(token_cierre) = self.advance() {
                     if token_cierre.token_type == TokenType::Puntuacion(')') {
-                        return Ok(expr_interna); // Devolvemos la expresión interna exitosamente
+                        return Ok(expr_interna); // Devolvemos la expresion interna exitosamente
                     }
                     return Err(format!(
-                        "Error Sintáctico en la línea {}, columna {}: Se esperaba ')', pero se encontró '{}'",
+                        "Error Sintactico en la linea {}, columna {}: Se esperaba ')', pero se encontro '{}'",
                         token_cierre.line, token_cierre.column, token_cierre.value
                     ));
                 }
-                Err("Error Sintáctico: Se esperaba ')' antes del fin de archivo".to_string())
+                Err("Error Sintactico: Se esperaba ')' antes del fin de archivo".to_string())
             }
 
             _ => Err(format!(
-                "Error Sintáctico en la línea {}, columna {}: Se esperaba un valor primario, pero se encontró '{}'",
+                "Error Sintactico en la linea {}, columna {}: Se esperaba un valor primario, pero se encontro '{}'",
                 token.line, token.column, token.value
             )),
         }
