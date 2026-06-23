@@ -1,3 +1,11 @@
+def main():
+    j:int = 3
+    x:int = 4
+    y:int
+    y = j + x
+    if y > 3:
+        print("si")
+
 x = 10
 y = 20 * 5 + 20 / 1
 z = x + y

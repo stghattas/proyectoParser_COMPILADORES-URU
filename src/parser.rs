@@ -139,6 +139,68 @@ impl Parser {
                 Err("Fin de archivo inesperado al leer el if".to_string())
             }
 
+            // --- La estructura de Funciones (def) ---
+            TokenType::PalabraReservada(palabra) if palabra == "def" => {
+                let indent_base = token_actual.indent_level; // Nivel de la declaración
+                self.advance(); // Consumimos 'def'
+
+                // 1. Buscamos el nombre de la función
+                let nombre_func = if let Some(token_nombre) = self.advance().cloned() {
+                    if let TokenType::Identificador(nombre) = token_nombre.token_type {
+                        nombre
+                    } else {
+                        return Err(format!(
+                            "Línea {}: Se esperaba el nombre de la función",
+                            token_nombre.line
+                        ));
+                    }
+                } else {
+                    return Err("Fin de archivo al leer la función".to_string());
+                };
+
+                // 2. Esperamos los paréntesis de apertura '('
+                if let Some(par_abre) = self.advance().cloned() {
+                    if par_abre.token_type != TokenType::Puntuacion('(') {
+                        return Err(format!(
+                            "Línea {}: Se esperaba '(' después de '{}'",
+                            par_abre.line, nombre_func
+                        ));
+                    }
+                }
+
+                // Por ahora, para igualar la pizarra, asumimos funciones sin parámetros y buscamos el ')'
+                if let Some(par_cierra) = self.advance().cloned() {
+                    if par_cierra.token_type != TokenType::Puntuacion(')') {
+                        return Err(format!(
+                            "Línea {}: Se esperaba ')' (Los parámetros en funciones aún no están implementados)",
+                            par_cierra.line
+                        ));
+                    }
+                }
+
+                // 3. Esperamos los dos puntos ':'
+                if let Some(dos_puntos) = self.advance().cloned() {
+                    if let TokenType::Puntuacion(c) = dos_puntos.token_type {
+                        if c == ':' {
+                            // 4. Leemos todo el cuerpo de la función (el bloque indentado)
+                            let cuerpo = self.parse_bloque(indent_base)?;
+
+                            return Ok(Stmt::DefFuncion {
+                                nombre: nombre_func,
+                                tipo_retorno: "Void".to_string(), // Según tu pizarra, el tipo de retorno por defecto es Void
+                                cuerpo,
+                            });
+                        }
+                    }
+                    return Err(format!(
+                        "Línea {}: Se esperaba ':' al final de la definición de la función",
+                        dos_puntos.line
+                    ));
+                }
+
+                Err("Fin de archivo inesperado esperando ':'".to_string())
+            }
+
             TokenType::Identificador(nombre) => {
                 let nombre_variable = nombre.clone();
                 self.advance(); // Consumimos el identificador inicial (ej: 'j', 'x', 'y')
