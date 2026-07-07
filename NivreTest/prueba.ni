@@ -26,4 +26,4 @@ else:
     print("El valor es menor o igual a 10")
     x = 100
 
-calculo_complejo = 100.67 - (20 * 3) * 8 + 15 / 5
+calculo_complejo = ((3 + 8) * 5 + 4) / (25 + 4 * 3)

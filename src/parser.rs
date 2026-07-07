@@ -26,20 +26,34 @@ impl Parser {
         token
     }
 
-    // --- NUEVO: Bucle principal ---
+    // --- Bucle principal ---
     pub fn parse_programa(&mut self) -> Result<Vec<Stmt>, String> {
         let mut instrucciones = Vec::new();
 
-        while let Some(token) = self.peek() {
+        while let Some(token) = self.peek().cloned() {
             if token.token_type == TokenType::EOF {
                 break;
             }
-            // Ignoramos saltos de línea y puntuación extra por ahora en el bucle principal
+            // Ignoramos saltos de linea sueltos en la raiz
             if token.value == "\n" || token.value == ";" {
                 self.advance();
                 continue;
             }
 
+            // ¿Es una declaración de función?
+            let es_funcion = match &token.token_type {
+                TokenType::PalabraReservada(palabra) if palabra == "def" => true,
+                _ => false,
+            };
+
+            if !es_funcion {
+                return Err(format!(
+                    "Linea {}: Codigo suelto no permitido. Todas las instrucciones deben estar envueltas en una funcion (ej. 'def main():')",
+                    token.line
+                ));
+            }
+
+            // Si pasa la prueba, parsea la funcion completa
             let instruccion = self.parse_instruccion()?;
             instrucciones.push(instruccion);
         }
