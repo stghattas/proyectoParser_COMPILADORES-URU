@@ -62,22 +62,49 @@ impl Parser {
     }
 
     // --- Lector de Bloques por Indentacion ---
+    // --- Lector de Bloques por Indentación Estricto (Estilo Python) ---
     fn parse_bloque(&mut self, indent_base: usize) -> Result<Vec<Stmt>, String> {
         let mut instrucciones = Vec::new();
+        
+        // Esta variable guardará el nivel obligatorio que fije la primera instrucción
+        let mut nivel_esperado = None; 
 
-        while let Some(token) = self.peek() {
+        while let Some(token) = self.peek().cloned() {
             if token.token_type == TokenType::EOF {
                 break;
             }
-            // Ignoramos saltos de linea y puntuación extra
             if token.value == "\n" || token.value == ";" {
                 self.advance();
                 continue;
             }
 
-            // Si el token actual retrocede en indentación, cerramos el bloque
+            // Si retrocedemos al nivel del creador del bloque (o menos), se cierra el bloque
             if token.indent_level <= indent_base {
                 break;
+            }
+
+            // Candado de Alineación
+            match nivel_esperado {
+                None => {
+                    // La primera instrucción dicta la regla para el resto del bloque
+                    nivel_esperado = Some(token.indent_level);
+                }
+                Some(nivel_obligatorio) => {
+                    // Si la instrucción actual tiene MÁS indentación sin haber abierto un if/while/for
+                    if token.indent_level > nivel_obligatorio {
+                        return Err(format!(
+                            "IndentationError en la línea {}: Indentación inesperada. Se encontró nivel {} pero el bloque usa nivel {}",
+                            token.line, token.indent_level, nivel_obligatorio
+                        ));
+                    }
+                    // Si la instrucción tiene MENOS indentación, pero no retrocedió lo suficiente para cerrar el bloque
+                    if token.indent_level < nivel_obligatorio {
+                        return Err(format!(
+                            "IndentationError en la línea {}: Desindentación que no coincide con ningún nivel exterior",
+                            token.line
+                        ));
+                    }
+                }
             }
 
             let instruccion = self.parse_instruccion()?;
@@ -151,6 +178,75 @@ impl Parser {
                     ));
                 }
                 Err("Fin de archivo inesperado al leer el if".to_string())
+            }
+
+            // --- La estructura While ---
+            TokenType::PalabraReservada(palabra) if palabra == "while" => {
+                let indent_base = token_actual.indent_level; 
+                self.advance(); // Consumimos 'while'
+
+                let condicion = self.parse_comparacion()?; // Usamos parse_comparacion, igual que en el 'if'
+
+                if let Some(token_puntos) = self.advance().cloned() {
+                    if let TokenType::Puntuacion(c) = token_puntos.token_type {
+                        if c == ':' {
+                            let bloque = self.parse_bloque(indent_base)?;
+                            return Ok(Stmt::While {
+                                condicion,
+                                bloque,
+                            });
+                        }
+                    }
+                    return Err(format!("Línea {}: Se esperaba ':' después de la condición del while", token_puntos.line));
+                }
+                Err("Fin de archivo inesperado al leer el while".to_string())
+            }
+
+            // --- La estructura For ---
+            TokenType::PalabraReservada(palabra) if palabra == "for" => {
+                let indent_base = token_actual.indent_level; 
+                self.advance(); // Consumimos 'for'
+
+                // 1. Nombre de la variable iteradora
+                let variable = if let Some(token_var) = self.advance().cloned() {
+                    if let TokenType::Identificador(nombre) = token_var.token_type {
+                        nombre
+                    } else {
+                        return Err(format!("Línea {}: Se esperaba una variable después de 'for'", token_var.line));
+                    }
+                } else {
+                    return Err("Fin de archivo inesperado en el for".to_string());
+                };
+
+                // 2. Palabra reservada 'in'
+                if let Some(token_in) = self.advance().cloned() {
+                    if let TokenType::PalabraReservada(p) = token_in.token_type {
+                        if p != "in" {
+                            return Err(format!("Línea {}: Se esperaba 'in' después de la variable '{}'", token_in.line, variable));
+                        }
+                    } else {
+                        return Err("Se esperaba 'in'".to_string());
+                    }
+                }
+
+                // 3. El iterable (puede ser rango() o una lista)
+                let iterable = self.parse_expresion()?;
+
+                // 4. Los dos puntos y el bloque
+                if let Some(token_puntos) = self.advance().cloned() {
+                    if let TokenType::Puntuacion(c) = token_puntos.token_type {
+                        if c == ':' {
+                            let bloque = self.parse_bloque(indent_base)?;
+                            return Ok(Stmt::For {
+                                variable,
+                                iterable,
+                                bloque,
+                            });
+                        }
+                    }
+                    return Err(format!("Línea {}: Se esperaba ':' al final del for", token_puntos.line));
+                }
+                Err("Fin de archivo inesperado al leer el for".to_string())
             }
 
             // --- La estructura de Funciones (def) ---

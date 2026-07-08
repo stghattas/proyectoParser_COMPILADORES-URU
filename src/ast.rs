@@ -19,7 +19,6 @@ pub enum Expr {
 
 #[derive(Debug, Clone)]
 pub enum Stmt {
-    // NUEVO: Para 'x:int = 4' o simplemente 'y:int'
     Declaracion {
         nombre: String,
         tipo: String,
@@ -33,30 +32,41 @@ pub enum Stmt {
     If {
         condicion: Expr,
         bloque_true: Vec<Stmt>,
-        bloque_else: Option<Vec<Stmt>>, 
+        bloque_else: Option<Vec<Stmt>>,
     },
     While {
         condicion: Expr,
         bloque: Vec<Stmt>,
     },
-    // ACTUALIZADO: Para 'def main():' con su tipo de retorno
+    For {
+        variable: String,
+        iterable: Expr, // Puede ser una lista, un rango o un id
+        bloque: Vec<Stmt>,
+    },
     DefFuncion {
         nombre: String,
-        tipo_retorno: String, 
+        tipo_retorno: String,
         cuerpo: Vec<Stmt>,
     },
-    Expresion(Expr), 
+    Expresion(Expr),
 }
 
-// --- Lógica de Impresión (Ajustada a la Pizarra) ---
+// --- Lógica de Impresión ---
 
 impl Stmt {
     pub fn imprimir_arbol(&self, nivel: usize) {
         let sangria = "    ".repeat(nivel);
 
         match self {
-            Stmt::Declaracion { nombre, tipo, valor } => {
-                println!("{}└── Declaración [Nombre: {}, Tipo: {}]", sangria, nombre, tipo);
+            Stmt::Declaracion {
+                nombre,
+                tipo,
+                valor,
+            } => {
+                println!(
+                    "{}└── Declaración [Nombre: {}, Tipo: {}]",
+                    sangria, nombre, tipo
+                );
                 if let Some(v) = valor {
                     v.imprimir_arbol(nivel + 1);
                 }
@@ -69,7 +79,11 @@ impl Stmt {
                 println!("{}└── Expresión Suelta", sangria);
                 expr.imprimir_arbol(nivel + 1);
             }
-            Stmt::If { condicion, bloque_true, bloque_else } => {
+            Stmt::If {
+                condicion,
+                bloque_true,
+                bloque_else,
+            } => {
                 println!("{}└── If", sangria);
                 println!("{}    ├── Condición:", sangria);
                 condicion.imprimir_arbol(nivel + 2);
@@ -92,8 +106,28 @@ impl Stmt {
                     stmt.imprimir_arbol(nivel + 2);
                 }
             }
-            Stmt::DefFuncion { nombre, tipo_retorno, cuerpo } => {
-                println!("{}└── Función [Nombre: {}, Retorno: {}]", sangria, nombre, tipo_retorno);
+            Stmt::For {
+                variable,
+                iterable,
+                bloque,
+            } => {
+                println!("{}└── For [Var: {}]", sangria, variable);
+                println!("{}    ├── In:", sangria);
+                iterable.imprimir_arbol(nivel + 2);
+                println!("{}    └── Bloque:", sangria);
+                for stmt in bloque {
+                    stmt.imprimir_arbol(nivel + 2);
+                }
+            }
+            Stmt::DefFuncion {
+                nombre,
+                tipo_retorno,
+                cuerpo,
+            } => {
+                println!(
+                    "{}└── Función [Nombre: {}, Retorno: {}]",
+                    sangria, nombre, tipo_retorno
+                );
                 println!("{}    └── Cuerpo:", sangria);
                 for stmt in cuerpo {
                     stmt.imprimir_arbol(nivel + 2);
@@ -113,7 +147,11 @@ impl Expr {
             Expr::LiteralString(val) => println!("{}├── String: \"{}\"", sangria, val),
             Expr::LiteralBool(val) => println!("{}├── Booleano: {}", sangria, val),
             Expr::Identificador(nombre) => println!("{}├── Id: {}", sangria, nombre),
-            Expr::OperacionBinaria { izquierdo, operador, derecho } => {
+            Expr::OperacionBinaria {
+                izquierdo,
+                operador,
+                derecho,
+            } => {
                 println!("{}├── Operación: [{}]", sangria, operador);
                 izquierdo.imprimir_arbol(nivel + 1);
                 derecho.imprimir_arbol(nivel + 1);

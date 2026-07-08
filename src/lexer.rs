@@ -70,8 +70,11 @@ impl Lexer {
             if c == ' ' || c == '\t' {
                 current_whitespace.push(c);
                 self.advance();
+            } else if c == '\r' {
+                // 🛠️ ¡CORRECCIÓN!: Ignoramos el \r de Windows para que no rompa el conteo
+                self.advance();
             } else if c == '\n' {
-                // Linea vacia, reiniciar
+                // Linea vacia confirmada, reiniciar conteo de espacios
                 self.line += 1;
                 self.column = 0;
                 current_whitespace.clear();
@@ -86,22 +89,15 @@ impl Lexer {
 
         if current_whitespace != current_top {
             if current_whitespace.starts_with(&current_top) {
-                // Si la nueva indentacion contiene a la anterior y es más larga: INDENT
                 self.indent_stack.push(current_whitespace);
             } else {
-                // Si es diferente y no la contiene, estamos retrocediendo: DEDENT
                 while let Some(top) = self.indent_stack.last() {
-                    // Retiramos niveles hasta que el tamaño coincida o sea menor
                     if current_whitespace.len() < top.len() {
                         self.indent_stack.pop();
                     } else {
                         break;
                     }
                 }
-
-                // Nota para el futuro: Aqui es donde el compilador lanza un
-                // "IndentationError" si después de hacer pop(), current_whitespace
-                // no es exactamente igual al nuevo tope de la pila.
             }
         }
 
@@ -209,7 +205,7 @@ impl Lexer {
         let token_type = match value.as_str() {
             "True" => TokenType::Boolean(true),
             "False" => TokenType::Boolean(false),
-            "float" | "if" | "else" | "while" | "def" | "return" => {
+            "float" | "if" | "else" | "while" | "def" | "return" | "for" | "in" => {
                 TokenType::PalabraReservada(value.clone())
             }
             _ => TokenType::Identificador(value.clone()),
@@ -273,9 +269,20 @@ impl Lexer {
                 }
                 // Operadores agrupados
                 '+' | '-' | '*' | '/' | '=' | '<' | '>' | '!' => tokens.push(self.read_operator()),
+
+                '#' => {
+                    // Si encontramos un '#' es un comentario.
+                    while let Some(target_char) = self.current_char {
+                        if target_char == '\n' || target_char == '\r' {
+                            break; // Detenemos el exterminio al terminar la línea
+                        }
+                        self.advance();
+                    }
+                }
+
                 _ => self.advance(),
             }
-        }
+        } // Fin del while
 
         tokens.push(Token {
             token_type: TokenType::EOF,

@@ -1,20 +1,20 @@
-def configurar_entorno():
-  x:int = 10
-  y:int
+def mainer():
+         contador:int = 0
+            
+         # El bloque se fijó en el nivel 3. La siguiente línea romperá el código:
+               exceso_indentacion = 10
 
 def main():
-      y:int = 5
-      z:float = 14.5
-      
-      if y > 2:
-        print("Entrando al primer nivel")
+    contador:int = 0
+    
+    # Linea vacia normal
+    while contador < 10:
+        contador = contador + 1
         
-        if z < 20.0:
-           resultado:float = (y * 10) + z / 2.0
-           
-           if resultado == 57.25:
-              print("Calculo exacto logrado", resultado)
-           else:
-              print("Fallo de precision")
-        else:
-           print("Z es muy grande")
+        # Linea vacia engañosa con 3 niveles de indentacion por error
+            
+        if contador == 5:
+            print("Mitad de camino")
+
+    for i in rango(0, 5):
+        print("Ciclo for iterando", i)
