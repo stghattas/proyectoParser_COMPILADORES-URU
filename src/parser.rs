@@ -6,6 +6,7 @@ use crate::lexer::{Token, TokenType};
 pub struct Parser {
     tokens: Vec<Token>,
     position: usize,
+    recursion_depth: usize,
 }
 
 impl Parser {
@@ -13,6 +14,7 @@ impl Parser {
         Parser {
             tokens,
             position: 0,
+            recursion_depth: 0,
         }
     }
 
@@ -109,6 +111,11 @@ impl Parser {
 
             let instruccion = self.parse_instruccion()?;
             instrucciones.push(instruccion);
+        }
+
+        // PROTECCIÓN EOF: Si sale del bucle y no leimos ni una sola instruccion
+        if instrucciones.is_empty() {
+            return Err("IndentationError: Se esperaba un bloque indentado. El bloque esta vacio o el archivo termino abruptamente.".to_string());
         }
 
         Ok(instrucciones)
@@ -358,12 +365,26 @@ impl Parser {
                     }
                 }
 
-                // 2. Si no hubo ':', ¿es una asignación normal? (ej: x = 5)
+                // 2. Si no hubo ':', ¿es una asignación normal o compuesta? (ej: x = 5 o x += 5)
                 if let Some(siguiente) = self.peek() {
                     if let TokenType::Operador(op) = &siguiente.token_type {
-                        if op == "=" {
-                            self.advance(); // Consumimos el '='
-                            let valor = self.parse_expresion()?;
+                        // Verificamos si es un igual o un operador compuesto
+                        if op == "=" || op == "+=" || op == "-=" || op == "*=" || op == "/=" {
+                            let operador_usado = op.clone();
+                            self.advance(); // Consumimos el operador
+                            
+                            let mut valor = self.parse_expresion()?;
+
+                            // expandimos el AST de `x += 5` a `x = x + 5`.
+                            if operador_usado != "=" {
+                                let operador_base = operador_usado.chars().next().unwrap().to_string(); // Extrae el '+'
+                                valor = Expr::OperacionBinaria {
+                                    izquierdo: Box::new(Expr::Identificador(nombre_variable.clone())),
+                                    operador: operador_base,
+                                    derecho: Box::new(valor),
+                                };
+                            }
+
                             return Ok(Stmt::Asignacion {
                                 nombre: nombre_variable,
                                 valor,
@@ -512,9 +533,18 @@ impl Parser {
             }
 
             TokenType::Puntuacion(c) if c == '(' => {
+                // PROTECCIÓN STACK OVERFLOW: Aumentamos el nivel de profundidad
+                self.recursion_depth += 1;
+                if self.recursion_depth > 100 {
+                    return Err("Error de Compilacion: Profundidad máxima de recursión excedida (Stack Overflow). Codigo demasiado anidado.".to_string());
+                }
+
                 let expr_interna = self.parse_expresion()?;
 
-                // Al salir de la expresión, el siguiente token DEBE ser un parentesis de cierre ')'
+                // Salimos de la expresion de forma segura, reducimos el contador
+                self.recursion_depth -= 1;
+
+                // Al salir de la expresion, el siguiente token DEBE ser un parentesis de cierre ')'
                 if let Some(token_cierre) = self.advance() {
                     if token_cierre.token_type == TokenType::Puntuacion(')') {
                         return Ok(expr_interna); // Devolvemos la expresion interna exitosamente
