@@ -1,9 +1,3 @@
-def mainer():
-         contador:int = 0
-            
-         # El bloque se fijó en el nivel 3. La siguiente línea romperá el código:
-               exceso_indentacion = 10
-
 def main():
     contador:int = 0
     

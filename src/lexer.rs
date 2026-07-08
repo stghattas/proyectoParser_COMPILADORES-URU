@@ -106,41 +106,79 @@ impl Lexer {
 
     fn read_string(&mut self, quote_type: char) -> Token {
         let start_column = self.column;
+        let mut raw_lexeme = String::new();
+        let mut processed_value = String::new();
 
-        let mut raw_lexeme = String::new(); // Lo que escribio el usuario
-        let mut processed_value = String::new(); // El valor interpretado para memoria
+        self.advance(); // Consumimos la primera comilla
 
-        // Consumimos la comilla de apertura
-        self.advance();
+        let mut is_multiline = false;
+
+        // Verificamos si es un string de comillas triples (ej: """)
+        if self.current_char == Some(quote_type) {
+            if self.position + 1 < self.input.len() && self.input[self.position + 1] == quote_type {
+                is_multiline = true;
+                self.advance(); // Consumimos la segunda comilla
+                self.advance(); // Consumimos la tercera comilla
+            } else {
+                // Era simplemente un string vacío ("" o '')
+                self.advance();
+                return Token {
+                    token_type: TokenType::String(String::new()),
+                    value: format!("{}{}", quote_type, quote_type),
+                    line: self.line,
+                    column: start_column,
+                    indent_level: self.current_indent,
+                };
+            }
+        }
 
         while let Some(c) = self.current_char {
-            if c == '\\' {
-                raw_lexeme.push(c);
-                self.advance();
-
-                if let Some(escaped_char) = self.current_char {
-                    raw_lexeme.push(escaped_char);
-
-                    // Procesamos el escape para la memoria interna
-                    match escaped_char {
-                        'n' => processed_value.push('\n'),
-                        't' => processed_value.push('\t'),
-                        '\\' => processed_value.push('\\'),
-                        '"' => processed_value.push('"'),
-                        '\'' => processed_value.push('\''),
-                        _ => processed_value.push(escaped_char),
+            if is_multiline {
+                // Buscamos el cierre exacto de tres comillas
+                if c == quote_type
+                    && self.position + 2 < self.input.len()
+                    && self.input[self.position + 1] == quote_type
+                    && self.input[self.position + 2] == quote_type
+                {
+                    self.advance(); // Consumimos la 1ra comilla de cierre
+                    self.advance(); // Consumimos la 2da comilla de cierre
+                    self.advance(); // Consumimos la 3ra comilla de cierre
+                    break;
+                } else {
+                    // Si hay un salto de línea dentro del comentario, actualizamos contadores
+                    if c == '\n' {
+                        self.line += 1;
+                        self.column = 0;
                     }
+                    raw_lexeme.push(c);
+                    processed_value.push(c);
                     self.advance();
                 }
-            } else if c == quote_type {
-                // Encontramos la comilla de cierre
-                self.advance();
-                break;
             } else {
-                // Caracter normal, lo guardamos en ambos lados
-                raw_lexeme.push(c);
-                processed_value.push(c);
-                self.advance();
+                // Lógica para strings normales de una sola comilla (ya la tenías perfecta)
+                if c == '\\' {
+                    raw_lexeme.push(c);
+                    self.advance();
+                    if let Some(escaped_char) = self.current_char {
+                        raw_lexeme.push(escaped_char);
+                        match escaped_char {
+                            'n' => processed_value.push('\n'),
+                            't' => processed_value.push('\t'),
+                            '\\' => processed_value.push('\\'),
+                            '"' => processed_value.push('"'),
+                            '\'' => processed_value.push('\''),
+                            _ => processed_value.push(escaped_char),
+                        }
+                        self.advance();
+                    }
+                } else if c == quote_type {
+                    self.advance();
+                    break;
+                } else {
+                    raw_lexeme.push(c);
+                    processed_value.push(c);
+                    self.advance();
+                }
             }
         }
 
